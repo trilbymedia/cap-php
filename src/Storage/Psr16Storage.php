@@ -17,8 +17,8 @@ final class Psr16Storage implements ChallengeStorageInterface, TokenStorageInter
 {
     public function __construct(
         private CacheInterface $cache,
-        private string $challengePrefix = 'cap:c:',
-        private string $tokenPrefix     = 'cap:t:',
+        private string $challengePrefix = 'cap_c_',
+        private string $tokenPrefix     = 'cap_t_',
     ) {}
 
     public function storeChallenge(string $token, array $challenge): void
