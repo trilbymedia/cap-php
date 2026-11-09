@@ -84,9 +84,14 @@ final class Encoding
         if (function_exists('gzdeflate')) {
             return gzdeflate($script, 1);
         }
-        // RFC 1951 stored blocks are valid raw DEFLATE, even without ext-zlib.
+        return self::storedDeflate($script);
+    }
+
+    /** RFC 1951 stored blocks: valid raw DEFLATE without ext-zlib. */
+    public static function storedDeflate(string $script): string
+    {
         $out = '';
-        $chunks = str_split($script, 65535);
+        $chunks = $script === '' ? [''] : str_split($script, 65535);
         foreach ($chunks as $i => $chunk) {
             $len = strlen($chunk);
             $out .= chr($i === count($chunks) - 1 ? 1 : 0) . pack('vv', $len, $len ^ 0xFFFF) . $chunk;

@@ -13,7 +13,7 @@ const defs=test.slice(test.indexOf('const frac'),test.indexOf('describe('));
 const {chromeHuman,firefoxHuman,safariHuman}=await import('data:text/javascript;base64,'+Buffer.from(defs+'\nexport {chromeHuman,firefoxHuman,safariHuman};').toString('base64'));
 const clean=x=>JSON.parse(JSON.stringify(x));
 const detect=[];
-const add=(name,s)=>{s=clean(s);const r=detectAutomation(s,{fontStackCount:17});detect.push({name,input:s,result:{pass:r.pass,blockedBy:r.blockedBy,riskFlags:r.riskFlags}});};
+const add=(name,s)=>{s=clean(s);const r=detectAutomation(s,{fontStackCount:17});detect.push({name,input:s,inputJson:JSON.stringify(s),result:{pass:r.pass,blockedBy:r.blockedBy,riskFlags:r.riskFlags}});};
 for(const [name,make] of Object.entries({chrome:chromeHuman,firefox:firefoxHuman,safari:safariHuman})){
  add(name,make());
  for(const key of Object.keys(make())){
@@ -30,6 +30,7 @@ const patches={
  mobile:{ua:'Mozilla/5.0 Android Chrome/151',uaData:{brands:['Chromium/151'],mobile:true},maxTouchPoints:5,mainNav:{platform:'Linux armv8l'},hev:{ar:'x86'},na:127}
 };
 for(const [name,p] of Object.entries(patches))add(name,{...chromeHuman(),...p});
+for(const key of ['uaData','plugins','engine','screen','mainNav','tamper','outerWH','fontWidths','host','workerNav','hev','stealth','lies','ig','sd','no','cv','gpu','voices'])for(const value of [null,17,'bad',[],{}])add('malformed '+key+' '+JSON.stringify(value),{...chromeHuman(),[key]:value});
 const now=1_000_000;
 const meta={id:'0123456789abcdef0123456789abcdef',iat:now-1000,expires:now+60000,vars:['aaaa','bbbb','cccc','dddd'],binding:{pv:[-1234567,89012345,-123,777],sl:[123456,234567,345678,456789],hs:[89123456,987654321],j:[0,2]},blockAutomatedBrowsers:false,detectAutomatedInteractions:false,blockAutomatedInteractions:false,behavior:false,behaviorEnforced:false};
 const base={v:1,el:100,p:chromeHuman(),vp:[945,868],hp:{nav:{brands:'Google Chrome/151'},cdp:false},ag:[],ce:0,ia:null,bh:null};
@@ -46,6 +47,7 @@ for(const [name,over,policy] of [
  ['stale',{el:70000},{}],['future',{el:10000},{}],['unknown data',{unknown:1},{}],['bad version',{v:2},{}],['bad codes',{ag:['z','a']},{}],['many codes',{ag:Array.from({length:33},(_,i)=>'a'+String.fromCharCode(97+(i/26|0),97+i%26))},{}],['automation code',{ag:['automation']},{}],
  ['behavior missing',{}, {behavior:true}],['reduced behavior report',{lw:1},{behavior:true,behaviorEnforced:false}],['reduced behavior block',{lw:1},{behavior:true,behaviorEnforced:true}],['probe missing',{p:null},{blockAutomatedBrowsers:true}]
 ]){const m={...meta,...policy};check(name,m,payload(m,{...base,...over}));}
+for(const [name,over] of Object.entries({badHost:{hp:{nav:{brands:{toString:1}}}},badMain:{p:{...chromeHuman(),mainNav:{brands:{toString:1}}}},badWebdriver:{p:{...chromeHuman(),webdriver:{toString:1}}},badUa:{p:{...chromeHuman(),ua:{toString:1}}},badBrands:{p:{...chromeHuman(),uaData:{brands:[{toString:1}]}}},badLangs:{p:{...chromeHuman(),langs:[{toString:1},true]}},badPrototype:{hp:{constructor:{evil:1}}},nullTamper:{p:{...chromeHuman(),tamper:null}}}))check(name,meta,payload(meta,{...base,...over}));
 for(const [name,patch] of Object.entries({id:{i:'wrong'},extra:{evil:true},state:{state:{aaaa:1}},nonstr:{d:1},oversized:{d:' '.repeat(65537)},tampered:{d:payload(meta,{...base,ce:1}).d}}))check(name,meta,{...payload(meta,base),...patch});
 const encoding=['plain','é中😀','\u2028\u2029',JSON.stringify({n:1e-7,b:1e21})].map(value=>({value,seed:12345678,hash:boundValues({...meta.binding,pv:[0,0,0,0],sl:[0,0,0,0]},value)}));
 const {analyzeBehavior,validateTrace}=await load('core/src/behavior.js');

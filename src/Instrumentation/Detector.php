@@ -12,7 +12,7 @@ final class Detector
         return (is_int($v) || is_float($v)) && is_finite((float)$v);
     }
 
-    public static function detect(array $s): array
+    public static function detect(array $s, ?\stdClass $raw = null): array
     {
         $blocked = [];
         $risk = [];
@@ -33,15 +33,19 @@ final class Detector
                 continue;
             }
             $type = ltrim($type, '?');
+            $original = $raw !== null ? ($raw->$field ?? null) : $v;
             $complete = $complete && match ($type) {
                 'number' => self::num($v),
-                'object' => is_array($v) && ($v === [] || !array_is_list($v)),
-                'array' => is_array($v) && array_is_list($v),
+                'object' => $raw !== null ? $original instanceof \stdClass : is_array($v) && ($v === [] || !array_is_list($v)),
+                'array' => is_array($original) && array_is_list($original),
                 default => gettype($v) === $type,
             };
         }
         $fw = is_array($s['fontWidths'] ?? null) ? $s['fontWidths'] : [];
         $add('probe_incomplete', $complete && count($fw) === 17);
+        foreach (['uaData', 'engine', 'screen', 'stealth', 'hev', 'mainNav', 'workerNav', 'tamper', 'host', 'cdp', 'gpu', 'glsh', 'innerWH', 'outerWH', 'activeText', 'langs', 'cv', 'voices'] as $field) {
+            if (!is_array($s[$field] ?? null)) $s[$field] = [];
+        }
         $ua = is_string($s['ua'] ?? null) ? $s['ua'] : '';
         $gecko = ($s['engine']['hasMozInnerScreenX'] ?? null) === true || (($s['productSub'] ?? null) === '20100101' && ($s['uaDataPresent'] ?? null) === false) || (is_string($s['oscpu'] ?? null) && $s['oscpu'] !== '__undefined');
         $chromium = ($s['uaDataPresent'] ?? null) === true || ($s['engine']['hasChrome'] ?? null) === true;
@@ -86,7 +90,8 @@ final class Detector
         }
         $add('worker_mismatch', !$mismatched);
         $tampered = array_filter($s['tamper'] ?? [], static fn ($v) => $v === false);
-        $add('native_tamper', !$tampered && empty($s['lies']), false);
+        $lies = is_array($s['lies'] ?? null) ? array_filter($s['lies'], 'is_string') : [];
+        $add('native_tamper', !$tampered && !$lies, false);
         $eval = $s['evalLen'] ?? null;
         $claimsGecko = preg_match('/Firefox\//', $ua) && !preg_match('/Seamonkey/i', $ua);
         $claimsBlink = preg_match('/Chrome\/|CriOS\//', $ua);
@@ -124,12 +129,14 @@ final class Detector
         $nan = ($s['na'] ?? null) === 255 ? 'x86' : (($s['na'] ?? null) === 127 ? 'arm' : null);
         $desktop = $arch === 'x86' && $nan === 'arm' && preg_match('/^Linux (armv|aarch64)/', $mn['platform'] ?? '');
         $add('arch_mismatch', !($nan !== null && in_array($arch, ['x86', 'arm'], true) && $arch !== $nan && !$desktop));
-        $add('injected_globals', empty($s['ig']), false);
+        $ig = is_array($s['ig'] ?? null) ? array_filter($s['ig'], 'is_string') : [];
+        $add('injected_globals', !$ig, false);
         $sd = is_array($s['sd'] ?? null) ? array_filter($s['sd'], 'is_string') : [];
         $forged = array_intersect($sd, ['isTrusted', 'objectToInspect']);
         $add('devtools_globals', !$forged);
         $add('stealth_descriptors', !array_diff($sd, $forged), false);
-        $add('navigator_order', !(($chromium || $eval === 33) && !empty($s['no'])), false);
+        $no = is_array($s['no'] ?? null) ? array_filter($s['no'], 'is_string') : [];
+        $add('navigator_order', !(($chromium || $eval === 33) && $no), false);
         $glsh = $s['glsh'] ?? null;
         $renderer = is_string($glsh['r'] ?? null) ? $glsh['r'] : $gl;
         $translated = $glsh['t'] ?? null;
@@ -148,8 +155,9 @@ final class Detector
         return ['pass' => !$blocked, 'blockedBy' => $blocked, 'riskFlags' => $risk];
     }
 
-    private static function family(string $s): ?string
+    private static function family(mixed $s): ?string
     {
+        $s = is_scalar($s) ? (string)$s : '';
         foreach (['nvidia' => '/nvidia|geforce|quadro|rtx/i', 'amd' => '/\bamd\b|radeon|\bati\b/i', 'intel' => '/intel/i', 'apple' => '/apple/i', 'qualcomm' => '/qualcomm|adreno/i', 'arm' => '/\bmali\b|\barm\b/i', 'google' => '/swiftshader|google/i'] as $family => $pattern) {
             if (preg_match($pattern, $s)) {
                 return $family;

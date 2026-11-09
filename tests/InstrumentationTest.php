@@ -34,7 +34,7 @@ final class InstrumentationTest extends TestCase
     #[DataProvider('detectorVectors')]
     public function testUpstreamDetectorVectors(array $v): void
     {
-        $this->assertSame($v['result'], Detector::detect($v['input']));
+        $this->assertSame($v['result'], Detector::detect($v['input'], json_decode($v['inputJson'])));
     }
 
     #[DataProvider('verifierVectors')]
@@ -57,6 +57,13 @@ final class InstrumentationTest extends TestCase
     {
         foreach (['1e-7', '0.000001', '100000000000000000000', '1e+21', '0', '3.1415'] as $json) {
             $this->assertSame($json, Encoding::canonical(json_decode($json)));
+        }
+    }
+
+    public function testDeflateFallbackHandlesEmptyAndMultipleBlocks(): void
+    {
+        foreach (['', 'program', str_repeat('abcdefgh', 17000)] as $script) {
+            $this->assertSame($script, gzinflate(Encoding::storedDeflate($script)));
         }
     }
 

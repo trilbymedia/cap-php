@@ -111,7 +111,7 @@ final class Verifier
                 if ($d['hp'] !== null) {
                     $vector['host'] = $d['hp'];
                 }
-                $detected = Detector::detect($vector);
+                $detected = Detector::detect($vector, $parsed->p);
                 if ($meta['blockAutomatedBrowsers'] && !$detected['pass']) {
                     return $fail('instr_automated_browser') + ['blockedBy' => $detected['blockedBy']];
                 }
