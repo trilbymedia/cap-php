@@ -5,7 +5,7 @@ PHP port of the [Cap](https://github.com/tiagozip/cap) proof-of-work captcha ser
 Wire-compatible with the official [`@cap.js/widget`](https://www.npmjs.com/package/@cap.js/widget), so the unmodified JS widget can talk to a PHP-backed endpoint.
 
 - SHA-256 proof-of-work — no tracking, no third-party calls, no API keys
-- Small (~500 LOC), no runtime dependencies beyond ext-json / ext-hash
+- No runtime dependencies beyond ext-json / ext-hash
 - Pluggable storage: in-memory, filesystem, or any PSR-16 cache
 
 ## Install
@@ -58,3 +58,32 @@ The PRNG and hashing are bit-exact with upstream `server/index.js` — verified 
 ## License
 
 Apache-2.0, matching upstream.
+
+## Browser instrumentation (opt-in)
+
+The default challenge and verification token formats remain compatible with widget 0.1.57. Instrumentation adds a unique JavaScript program to each challenge. Its private answer and binding keys stay in challenge storage. The browser runs upstream's native checks, browser probes, arithmetic and DOM operations; PHP verifies the challenge ID and every bound field before issuing a token. This is a deterrent to automated clients, not proof that a human is present.
+
+```php
+use TrilbyMedia\Cap\InstrumentationOptions;
+
+$cap = new Cap(new Config(
+    challengeStorage: $storage,
+    tokenStorage: $storage,
+    instrumentation: new InstrumentationOptions(
+        blockAutomatedBrowsers: true,
+        detectAutomatedInteractions: true,
+        blockAutomatedInteractions: false,
+    ),
+));
+
+// Forward the entire decoded widget body, including failure markers:
+$result = $cap->redeemChallengeBody($body);
+// Or retain the existing call and pass the widget's extra fields:
+$result = $cap->redeemChallenge($body['token'], $body['solutions'], $body);
+```
+
+`instrumentation: true` enables checks and risk reporting without blocking detected headless browsers. `false` is the default. `ChallengeOptions(instrumentation: ...)` overrides the policy per challenge. Policy is captured when the challenge is issued. Missing output, altered data, timeouts, blocked markers and script errors always fail; they cannot be used to bypass instrumentation. Failures include `success: false`, `message`, `error`, `instr_error: true` and `reason`; successes include `riskFlags` when instrumentation ran. HTTP adapters should return 403 for instrumentation failures (429 for `instr_timeout`) and JSON with `Cache-Control: no-store`.
+
+Basic instrumentation is supported with widget 0.1.57. Host-page checks and interaction collection require widget 0.1.59 or later; use 0.1.61, the version used for current interoperability checks. Earlier widgets can run the basic program in an isolated frame; policies requiring host access reject that result. Instrumentation first appeared upstream in widget 0.1.37; versions before 0.1.57 have not been validated against this PHP implementation. Three synthetic clicks or keydowns trigger the optional interaction block. The collector ignores sensitive fields and never reads field values. Use `window.CAP_SCRIPT_NONCE` with a strict CSP. `window.CAP_ISOLATE = true` limits access to the host page and is incompatible with policies requiring that access.
+
+The PHP generator uses upstream capjs-core 0.1.11's browser code and server verification rules. It randomizes its arithmetic, answer variables and binding keys per request, but does not provide upstream's optional esbuild/javascript-obfuscator levels. ext-zlib is used for compression when available; a valid uncompressed DEFLATE encoding is used otherwise. No Node process is required. See [browser code provenance](src/Instrumentation/UPSTREAM.md).

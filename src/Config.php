@@ -21,5 +21,6 @@ final class Config
         public readonly int $expiresMs = 600_000,
         public readonly int $tokenTtlMs = 1_200_000,
         public readonly bool $disableAutoCleanup = false,
+        public readonly bool|InstrumentationOptions $instrumentation = false,
     ) {}
 }

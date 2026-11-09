@@ -4,6 +4,9 @@ declare(strict_types=1);
 
 namespace TrilbyMedia\Cap;
 
+use TrilbyMedia\Cap\Instrumentation\Generator;
+use TrilbyMedia\Cap\Instrumentation\Verifier;
+
 /**
  * Cap proof-of-work captcha server.
  *
@@ -27,7 +30,7 @@ final class Cap
     /**
      * Generate a new challenge.
      *
-     * @return array{challenge: array{c:int,s:int,d:int}, token?: string, expires: int}
+     * @return array{challenge: array{c:int,s:int,d:int}, token?: string, expires: int, instrumentation?: string}
      */
     public function createChallenge(?ChallengeOptions $opts = null): array
     {
@@ -46,9 +49,18 @@ final class Cap
         }
 
         $token = $this->randomHex(25);
-        $this->config->challengeStorage->storeChallenge($token, $challenge + ['expires' => $expires]);
+        $stored = $challenge + ['expires' => $expires];
+        $result = ['challenge' => $challenge, 'token' => $token, 'expires' => $expires];
+        $instrumentation = $opts?->instrumentation ?? $this->config->instrumentation;
+        if ($instrumentation !== false) {
+            $meta = Generator::generate($instrumentation === true ? new InstrumentationOptions() : $instrumentation, $this->nowMs(), $expires);
+            $result['instrumentation'] = $meta['instrumentation'];
+            unset($meta['instrumentation']);
+            $stored['instrumentation'] = $meta;
+        }
+        $this->config->challengeStorage->storeChallenge($token, $stored);
 
-        return ['challenge' => $challenge, 'token' => $token, 'expires' => $expires];
+        return $result;
     }
 
     /**
@@ -57,7 +69,7 @@ final class Cap
      * @param int[] $solutions
      * @return array{success: bool, token?: string, expires?: int, message?: string}
      */
-    public function redeemChallenge(string $token, array $solutions): array
+    public function redeemChallenge(string $token, array $solutions, array $instrumentation = []): array
     {
         foreach ($solutions as $s) {
             if (!is_int($s)) {
@@ -94,6 +106,16 @@ final class Cap
             }
         }
 
+        $details = [];
+        if (isset($data['instrumentation'])) {
+            $verified = $this->verifyInstrumentation($data['instrumentation'], $instrumentation);
+            if (!$verified['valid']) {
+                return ['success' => false, 'message' => 'Blocked by instrumentation', 'error' => 'Blocked by instrumentation', 'instr_error' => true, 'reason' => $verified['reason']]
+                    + (isset($verified['blockedBy']) ? ['blockedBy' => $verified['blockedBy']] : []);
+            }
+            $details['riskFlags'] = $verified['riskFlags'];
+        }
+
         $vertoken = $this->randomHex(15);
         $id       = $this->randomHex(8);
         $expires  = $this->nowMs() + $this->config->tokenTtlMs;
@@ -101,7 +123,34 @@ final class Cap
 
         $this->config->tokenStorage->storeToken($key, $expires);
 
-        return ['success' => true, 'token' => $id . ':' . $vertoken, 'expires' => $expires];
+        return ['success' => true, 'token' => $id . ':' . $vertoken, 'expires' => $expires] + $details;
+    }
+
+    /** Redeem an unmodified widget JSON body, including instrumentation failure markers. */
+    public function redeemChallengeBody(array $body): array
+    {
+        if (!is_string($body['token'] ?? null) || !is_array($body['solutions'] ?? null)) {
+            return ['success' => false, 'message' => 'Invalid body'];
+        }
+        return $this->redeemChallenge($body['token'], $body['solutions'], $body);
+    }
+
+    private function verifyInstrumentation(array $meta, array $body): array
+    {
+        $reason = null;
+        if (($body['instr_blocked'] ?? null) === true) {
+            $reason = $meta['blockAutomatedBrowsers'] ? 'instr_automated_browser' : 'instr_failed';
+        } elseif (is_string($body['instr_error'] ?? null)) {
+            $reason = [
+                'csp_blocked' => 'instr_csp_blocked', 'csp_script_blocked' => 'instr_csp_blocked',
+                'natives_tampered' => 'instr_natives_tampered', 'env_failed' => 'instr_env_failed', 'script_failed' => 'instr_script_failed',
+            ][$body['instr_error']] ?? 'instr_failed';
+        } elseif (($body['instr_timeout'] ?? null) === true) {
+            $reason = 'instr_timeout';
+        } elseif (!isset($body['instr'])) {
+            $reason = 'instr_missing';
+        }
+        return $reason !== null ? ['valid' => false, 'reason' => $reason] : Verifier::verify($meta, $body['instr'], $this->nowMs());
     }
 
     /**
