@@ -18,5 +18,6 @@ final class ChallengeOptions
         public readonly ?bool $store = null,
         public readonly bool|InstrumentationOptions|null $instrumentation = null,
         public readonly bool|BehaviorOptions|null $behavior = null,
+        public readonly ?int $format = null,
     ) {}
 }

@@ -61,6 +61,8 @@ final class StorageTest extends TestCase
         } finally {
             @unlink($dir . '/challenges.json');
             @unlink($dir . '/tokens.json');
+            @unlink($dir . '/challenges.json.lock');
+            @unlink($dir . '/tokens.json.lock');
             @rmdir($dir);
         }
     }

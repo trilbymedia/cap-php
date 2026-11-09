@@ -49,7 +49,7 @@ if ($cap->validateToken($submittedToken)) {
 | challengeSize        | 32       | Salt length (hex chars)                     |
 | challengeDifficulty  | 4        | Target prefix length (hex chars)            |
 | expiresMs            | 600 000  | Challenge TTL (10 min)                      |
-| token TTL            | 20 min   | Validation token TTL (not configurable)     |
+| tokenTtlMs           | 1 200 000 | Verification token TTL (20 min)             |
 
 ## Protocol compatibility
 
@@ -114,3 +114,27 @@ Use widget 0.1.59 or later for behavior collection. Blocking with `requireIntera
 An optional `Config(behaviorReplayCheck: $closure)` receives the trace digest and its retention period in milliseconds and returns true when the digest was seen before. Use an atomic cache claim if enabling this callback. As upstream, callback exceptions leave the advisory check disabled for that attempt. Challenge and verification token replay protection still apply independently.
 
 Local agent detection uses bound page artifacts, click/typing patterns and supplied request headers. `Signature-Agent` headers are evidence only: this library does not fetch key directories or verify Web Bot Auth signatures, and it always reports `verified: false`. There is no verified-agent bypass.
+
+## Protocol lists and scopes
+
+`Config(format: 2)` or `ChallengeOptions(format: 2)` opts into upstream's protocol-list envelope:
+
+```json
+{"format":2,"token":"...","expires":1234567890000,"challenges":[{"protocol":"sha256-pow","payload":{"salt":"...","target":"0000"}},{"protocol":"instrumentation","payload":{"blob":"..."}}]}
+```
+
+Solutions are an equally sized list of `{"nonce":123}` and `{"instr":{...}}` objects, in challenge order. Instrumentation failure entries use `blocked`, `error` or `timeout`. Pass them unchanged to `redeemChallengeBody`. Both tested widgets 0.1.57 and 0.1.61 support these two protocols. Format 1 remains the default; there is no automatic protocol negotiation or new endpoint.
+
+`challengeSize` means salt length in hex characters in **both** PHP formats. Upstream format 2 instead treats it as random bytes, giving a 64-character salt at its default size 32; its current SHA-256 WASM solver cannot solve messages of 56 bytes or more. PHP deliberately retains 32 hex characters at the default. Keep the salt plus decimal nonce below 56 characters when using that WASM solver; sizes above the default can exceed its limit. Parameter bounds are count 1–1000, size 1–256, difficulty 1–16, checked when issuing a challenge. Widget requests must provide an exact, sequential solution list; legacy nonces must be nonnegative JS-safe integers. Invalid configuration throws `InvalidArgumentException`. Existing constructors and the first three positional `ChallengeOptions` arguments are unchanged.
+
+`Config(scope: 'form-name')` binds challenges and verification tokens to that instance's scope. Instances can share storage; a token issued in one scope fails validation in another without consuming it. Token text remains `id:secret`. A wrong-scope redeem consumes the challenge, consistent with PHP's consume-on-attempt policy. Scope is optional; the default remains unscoped.
+
+This library remains stateful. It does not issue or accept capjs-core's signed JWT challenges, provide custom token-signing hooks, or embed arbitrary extra data in JWTs. The widget treats challenge tokens as opaque strings, so these server internals do not affect widget interoperability. HashWX and RSW are **not implemented**: they require WASM/native execution or large-integer arithmetic beyond this library's ext-json/ext-hash requirements. It does not reproduce capd's HTTP site-key service, network signature verification, proxy/IP policy, rate limiter, rule engine, dashboard or telemetry. Applications continue to own routing, request limits, rate policy, secret authentication and HTTP status codes; local token validation is `validateToken`.
+
+## Storage and concurrent replay
+
+`ArrayStorage` and `FilesystemStorage` implement optional `AtomicChallengeStorageInterface::consumeChallenge` and `AtomicTokenStorageInterface::consumeToken`. Cap uses these when available. Filesystem mutations use stable `.lock` files and atomic renames, so separate PHP processes cannot redeem the same challenge or consume the same verification token twice. All writers must use the updated class and a filesystem supporting advisory locks. Corrupt/unreadable JSON or failed writes now throw instead of silently discarding records. Keep storage outside the web root.
+
+Existing storage interfaces and all three backends still accept arbitrary arrays containing an `expires` key, including Grav's rate/binding records. Redeem rejects non-challenge token names without reading or deleting those records. PSR-16 has no atomic read-and-delete operation; `Psr16Storage` and older custom adapters retain their read/delete fallback, which does not guarantee single use under concurrency. For that guarantee, implement the two optional interfaces with an atomic backend operation, such as Redis GETDEL. `keepToken: true` intentionally permits reuse.
+
+Challenge expiry remains 10 minutes; `tokenTtlMs` is configurable and defaults to 1,200,000 milliseconds. Cleanup remains lazy every five minutes unless `disableAutoCleanup` is true; `cleanup()` can be called explicitly. PSR-16 uses backend TTL eviction. The library performs no background network requests.

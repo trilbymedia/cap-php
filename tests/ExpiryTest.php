@@ -35,13 +35,15 @@ final class ExpiryTest extends TestCase
     {
         $storage = new ArrayStorage();
         // Manually seed an expired token.
-        $storage->storeToken('abc:' . hash('sha256', 'def'), time() * 1000 - 1000);
+        $id = str_repeat('a', 16);
+        $secret = str_repeat('b', 30);
+        $storage->storeToken($id . ':' . hash('sha256', $secret), time() * 1000 - 1000);
 
         $cap = new Cap(new Config(
             challengeStorage: $storage,
             tokenStorage:     $storage,
         ));
 
-        $this->assertFalse($cap->validateToken('abc:def'));
+        $this->assertFalse($cap->validateToken($id . ':' . $secret));
     }
 }

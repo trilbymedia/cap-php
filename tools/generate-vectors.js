@@ -52,7 +52,7 @@ const seeds = [
   'The quick brown fox jumps over the lazy dog',
   '0'.repeat(50),
   'f'.repeat(50),
-  // Realistic cap token shapes (50 hex chars = 25 random bytes):
+  // Realistic cap token layouts (50 hex chars = 25 random bytes):
   '6b1f9c2d7a4e5f8b3c9d0e1a2b4c5d6e7f8a9b0c1d2e3f4a5b',
   '6b1f9c2d7a4e5f8b3c9d0e1a2b4c5d6e7f8a9b0c1d2e3f4a5b1',  // token + "1"
   '6b1f9c2d7a4e5f8b3c9d0e1a2b4c5d6e7f8a9b0c1d2e3f4a5b1d', // token + "1" + "d"

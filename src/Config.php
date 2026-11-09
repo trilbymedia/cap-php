@@ -24,5 +24,7 @@ final class Config
         public readonly bool|InstrumentationOptions $instrumentation = false,
         public readonly bool|BehaviorOptions $behavior = false,
         public readonly ?\Closure $behaviorReplayCheck = null,
+        public readonly int $format = 1,
+        public readonly ?string $scope = null,
     ) {}
 }
