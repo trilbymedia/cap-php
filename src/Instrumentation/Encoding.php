@@ -35,7 +35,23 @@ final class Encoding
 
     public static function json(mixed $value): string
     {
-        return json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS | JSON_THROW_ON_ERROR);
+        $precision = ini_get('serialize_precision');
+        try {
+            if ($precision !== '-1') ini_set('serialize_precision', '-1');
+            return json_encode($value, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_LINE_TERMINATORS | JSON_THROW_ON_ERROR);
+        } finally {
+            if ($precision !== '-1') ini_set('serialize_precision', $precision);
+        }
+    }
+
+    public static function utf16Length(string $value): int
+    {
+        $units = 0;
+        for ($i = 0, $len = strlen($value); $i < $len; $i++) {
+            $byte = ord($value[$i]);
+            if ($byte < 128 || $byte >= 192) $units += $byte >= 240 ? 2 : 1;
+        }
+        return $units;
     }
 
     public static function canonical(mixed $value): string

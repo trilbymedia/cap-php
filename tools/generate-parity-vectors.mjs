@@ -42,12 +42,13 @@ for(const [name,p] of Object.entries(patches)){
  const m={...meta,blockAutomatedBrowsers:true};const d={...base,p:{...chromeHuman(),...p}};check('gated '+name,m,payload(m,d));
 }
 for(const [name,over,policy] of [
- ['unreachable',{hp:null},{blockAutomatedBrowsers:true}],['legacy',{lw:1},{blockAutomatedInteractions:true}],['isolated',{is:1},{blockAutomatedBrowsers:true}],['legacy report',{lw:1},{}],['isolated report',{is:1},{}],['eval',{ce:2},{}],
+ ['unreachable',{hp:null},{blockAutomatedBrowsers:true}],['legacy',{lw:1},{blockAutomatedInteractions:true}],['isolated',{is:1},{blockAutomatedBrowsers:true}],['legacy report',{lw:1},{}],['isolated report',{is:1},{}],['eval',{ce:2},{}],['null eval',{ce:null},{}],
  ['clicks',{ia:[3,0]},{detectAutomatedInteractions:true}],['keys block',{ia:[0,3]},{detectAutomatedInteractions:true,blockAutomatedInteractions:true}],['missing ia',{}, {detectAutomatedInteractions:true}],
  ['stale',{el:70000},{}],['future',{el:10000},{}],['unknown data',{unknown:1},{}],['bad version',{v:2},{}],['bad codes',{ag:['z','a']},{}],['many codes',{ag:Array.from({length:33},(_,i)=>'a'+String.fromCharCode(97+(i/26|0),97+i%26))},{}],['automation code',{ag:['automation']},{}],
  ['behavior missing',{}, {behavior:true}],['reduced behavior report',{lw:1},{behavior:true,behaviorEnforced:false}],['reduced behavior block',{lw:1},{behavior:true,behaviorEnforced:true}],['probe missing',{p:null},{blockAutomatedBrowsers:true}]
 ]){const m={...meta,...policy};check(name,m,payload(m,{...base,...over}));}
 for(const [name,over] of Object.entries({badHost:{hp:{nav:{brands:{toString:1}}}},badMain:{p:{...chromeHuman(),mainNav:{brands:{toString:1}}}},badWebdriver:{p:{...chromeHuman(),webdriver:{toString:1}}},badUa:{p:{...chromeHuman(),ua:{toString:1}}},badBrands:{p:{...chromeHuman(),uaData:{brands:[{toString:1}]}}},badLangs:{p:{...chromeHuman(),langs:[{toString:1},true]}},badPrototype:{hp:{constructor:{evil:1}}},nullTamper:{p:{...chromeHuman(),tamper:null}}}))check(name,meta,payload(meta,{...base,...over}));
+for(const count of [20000,33000])check('unicode boundary '+count,meta,payload(meta,{...base,hp:{tag:'😀'.repeat(count)}}));
 for(const [name,patch] of Object.entries({id:{i:'wrong'},extra:{evil:true},state:{state:{aaaa:1}},nonstr:{d:1},oversized:{d:' '.repeat(65537)},tampered:{d:payload(meta,{...base,ce:1}).d}}))check(name,meta,{...payload(meta,base),...patch});
 const encoding=['plain','é中😀','\u2028\u2029',JSON.stringify({n:1e-7,b:1e21})].map(value=>({value,seed:12345678,hash:boundValues({...meta.binding,pv:[0,0,0,0],sl:[0,0,0,0]},value)}));
 const {analyzeBehavior,validateTrace}=await load('core/src/behavior.js');

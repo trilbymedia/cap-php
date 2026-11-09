@@ -42,7 +42,7 @@ final class Policy
         }
         $verdict = $pre['verdict'];
         if ($agent !== null && $agent['detected'] && $verdict !== 'automated') $verdict = 'agent';
-        $behavior = ['score' => $pre['score'], 'verdict' => $verdict, 'flags' => $pre['flags'], 'signals' => $pre['signals']] + ($agent !== null ? ['agent' => $agent] : []);
+        $behavior = ['score' => $pre['score'], 'verdict' => $verdict, 'flags' => $pre['flags'], 'signals' => $pre['signals'] ?: new \stdClass()] + ($agent !== null ? ['agent' => $agent] : []);
         $flags = array_merge($flags, $pre['verdict'] === 'missing' ? ['bh_missing'] : $pre['flags']);
         if ($agent !== null && $agent['detected']) $flags[] = 'agent:' . $agent['name'];
         $reason = null;

@@ -60,6 +60,18 @@ final class InstrumentationTest extends TestCase
         }
     }
 
+    public function testCanonicalNumbersIgnoreAndRestoreHostPrecision(): void
+    {
+        $precision = ini_get('serialize_precision');
+        try {
+            ini_set('serialize_precision', '4');
+            $this->assertSame('1204.0500000000002', Encoding::canonical(1204.0500000000002));
+            $this->assertSame('4', ini_get('serialize_precision'));
+        } finally {
+            ini_set('serialize_precision', $precision);
+        }
+    }
+
     public function testDeflateFallbackHandlesEmptyAndMultipleBlocks(): void
     {
         foreach (['', 'program', str_repeat('abcdefgh', 17000)] as $script) {

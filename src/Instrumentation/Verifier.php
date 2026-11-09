@@ -39,8 +39,7 @@ final class Verifier
             if (!is_string($serialized)) {
                 return $fail('failed_challenge');
             }
-            // Canonical bound data from our browser program is ASCII-keyed UTF-8.
-            if (strlen($serialized) > 65_536) {
+            if (strlen($serialized) > 262_144 || Encoding::utf16Length($serialized) > 65_536) {
                 return $fail('instr_oversized');
             }
             $parsed = json_decode($serialized, false, 128, JSON_THROW_ON_ERROR);
@@ -147,7 +146,7 @@ final class Verifier
         if (!property_exists($d, 'vp') || ($d->vp !== null && !(is_array($d->vp) && count($d->vp) === 2 && self::num($d->vp[0]) && self::num($d->vp[1])))) {
             return false;
         }
-        if (isset($d->ce) && !in_array($d->ce, [0, 1, 2], true)) {
+        if (property_exists($d, 'ce') && !in_array($d->ce, [0, 1, 2], true)) {
             return false;
         }
         foreach (['lw', 'is'] as $key) {

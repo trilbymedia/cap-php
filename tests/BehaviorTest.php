@@ -92,6 +92,15 @@ final class BehaviorTest extends TestCase
         $this->assertContains('agent:claude-agent', $r['riskFlags']);
     }
 
+    public function testLegacyReportUsesAnObjectForEmptySignals(): void
+    {
+        $verified = ['trace' => null, 'agent' => ['all' => [], 'host' => false, 'legacy' => true, 'isolated' => false], 'riskFlags' => ['legacy_widget']];
+        $r = Policy::evaluate($verified, (new BehaviorOptions())->policy(), [], null, 0);
+        $this->assertTrue($r['valid']);
+        $this->assertInstanceOf(\stdClass::class, $r['behavior']['signals']);
+        $this->assertStringContainsString('"signals":{}', json_encode($r));
+    }
+
     public function testInvalidThreshold(): void
     {
         $this->expectException(\InvalidArgumentException::class);
