@@ -6,6 +6,7 @@ namespace TrilbyMedia\Cap;
 
 use TrilbyMedia\Cap\Instrumentation\Generator;
 use TrilbyMedia\Cap\Instrumentation\Verifier;
+use TrilbyMedia\Cap\Instrumentation\Policy;
 
 /**
  * Cap proof-of-work captcha server.
@@ -52,8 +53,14 @@ final class Cap
         $stored = $challenge + ['expires' => $expires];
         $result = ['challenge' => $challenge, 'token' => $token, 'expires' => $expires];
         $instrumentation = $opts?->instrumentation ?? $this->config->instrumentation;
-        if ($instrumentation !== false) {
-            $meta = Generator::generate($instrumentation === true ? new InstrumentationOptions() : $instrumentation, $this->nowMs(), $expires);
+        $behavior = $opts?->behavior ?? $this->config->behavior;
+        if ($behavior !== false) {
+            $behavior = $behavior === true ? new BehaviorOptions() : $behavior;
+            $stored['behavior'] = $behavior->policy();
+            $result['behavior'] = true;
+        }
+        if ($instrumentation !== false || $behavior !== false) {
+            $meta = Generator::generate($instrumentation instanceof InstrumentationOptions ? $instrumentation : new InstrumentationOptions(), $this->nowMs(), $expires, $behavior !== false, $behavior !== false && ($behavior->block || $behavior->blockAgents !== false));
             $result['instrumentation'] = $meta['instrumentation'];
             unset($meta['instrumentation']);
             $stored['instrumentation'] = $meta;
@@ -69,7 +76,7 @@ final class Cap
      * @param int[] $solutions
      * @return array{success: bool, token?: string, expires?: int, message?: string}
      */
-    public function redeemChallenge(string $token, array $solutions, array $instrumentation = []): array
+    public function redeemChallenge(string $token, array $solutions, array $instrumentation = [], array $requestHeaders = []): array
     {
         foreach ($solutions as $s) {
             if (!is_int($s)) {
@@ -115,6 +122,15 @@ final class Cap
             }
             $details['riskFlags'] = $verified['riskFlags'];
         }
+        if (isset($verified) || $requestHeaders) {
+            $policy = Policy::evaluate($verified ?? [], $data['behavior'] ?? null, $requestHeaders, $this->config->behaviorReplayCheck, $data['expires'] - $this->nowMs());
+            if (!$policy['valid']) {
+                unset($policy['valid']);
+                return ['success' => false, 'message' => 'Blocked by interaction checks', 'error' => 'Blocked by interaction checks'] + $policy;
+            }
+            unset($policy['valid']);
+            $details = $policy;
+        }
 
         $vertoken = $this->randomHex(15);
         $id       = $this->randomHex(8);
@@ -127,12 +143,12 @@ final class Cap
     }
 
     /** Redeem an unmodified widget JSON body, including instrumentation failure markers. */
-    public function redeemChallengeBody(array $body): array
+    public function redeemChallengeBody(array $body, array $requestHeaders = []): array
     {
         if (!is_string($body['token'] ?? null) || !is_array($body['solutions'] ?? null)) {
             return ['success' => false, 'message' => 'Invalid body'];
         }
-        return $this->redeemChallenge($body['token'], $body['solutions'], $body);
+        return $this->redeemChallenge($body['token'], $body['solutions'], $body, $requestHeaders);
     }
 
     private function verifyInstrumentation(array $meta, array $body): array

@@ -87,3 +87,30 @@ $result = $cap->redeemChallenge($body['token'], $body['solutions'], $body);
 Basic instrumentation is supported with widget 0.1.57. Host-page checks and interaction collection require widget 0.1.59 or later; use 0.1.61, the version used for current interoperability checks. Earlier widgets can run the basic program in an isolated frame; policies requiring host access reject that result. Instrumentation first appeared upstream in widget 0.1.37; versions before 0.1.57 have not been validated against this PHP implementation. Three synthetic clicks or keydowns trigger the optional interaction block. The collector ignores sensitive fields and never reads field values. Use `window.CAP_SCRIPT_NONCE` with a strict CSP. `window.CAP_ISOLATE = true` limits access to the host page and is incompatible with policies requiring that access.
 
 The PHP generator uses upstream capjs-core 0.1.11's browser code and server verification rules. It randomizes its arithmetic, answer variables and binding keys per request, but does not provide upstream's optional esbuild/javascript-obfuscator levels. ext-zlib is used for compression when available; a valid uncompressed DEFLATE encoding is used otherwise. No Node process is required. See [browser code provenance](src/Instrumentation/UPSTREAM.md).
+
+## Experimental behavior and agent policies
+
+```php
+use TrilbyMedia\Cap\BehaviorOptions;
+
+$cap = new Cap(new Config(
+    challengeStorage: $storage,
+    tokenStorage: $storage,
+    behavior: new BehaviorOptions(
+        block: true,
+        strict: false,
+        requireInteraction: true,
+        threshold: 0.75,
+        blockAgents: 'identified', // false, 'identified' (high confidence), or 'all'
+    ),
+));
+$result = $cap->redeemChallengeBody($body, $requestHeaders);
+```
+
+`behavior: true` reports scores without blocking. `BehaviorOptions` and `ChallengeOptions(behavior: ...)` allow explicit policies. Behavior automatically enables instrumentation and adds `behavior: true` to the challenge. The bound collector records pointer paths and key timing, never key identities or field values. Results include `behavior` with `score`, `verdict`, `flags` and diagnostic `signals`. Agent evidence can add `agent:<name>` to `riskFlags` and an `agent` result. Supply actual request headers as the separate second argument to `redeemChallengeBody` (fourth argument to `redeemChallenge`); never take these from the JSON body.
+
+Use widget 0.1.59 or later for behavior collection. Blocking with `requireInteraction: true` rejects invisible/programmatic `solve()` calls without a widget press, so set it to false for invisible mode. Old/isolated widgets can report missing behavior but fail enforced policies with `instr_widget_outdated` or `instr_isolated`. Behavior thresholds must be between 0.1 and 1; weak signals are capped at 0.6 unless `strict` is enabled.
+
+An optional `Config(behaviorReplayCheck: $closure)` receives the trace digest and its retention period in milliseconds and returns true when the digest was seen before. Use an atomic cache claim if enabling this callback. As upstream, callback exceptions leave the advisory check disabled for that attempt. Challenge and verification token replay protection still apply independently.
+
+Local agent detection uses bound page artifacts, click/typing patterns and supplied request headers. `Signature-Agent` headers are evidence only: this library does not fetch key directories or verify Web Bot Auth signatures, and it always reports `verified: false`. There is no verified-agent bypass.

@@ -22,5 +22,7 @@ final class Config
         public readonly int $tokenTtlMs = 1_200_000,
         public readonly bool $disableAutoCleanup = false,
         public readonly bool|InstrumentationOptions $instrumentation = false,
+        public readonly bool|BehaviorOptions $behavior = false,
+        public readonly ?\Closure $behaviorReplayCheck = null,
     ) {}
 }

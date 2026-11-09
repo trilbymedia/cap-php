@@ -48,4 +48,38 @@ for(const [name,over,policy] of [
 ]){const m={...meta,...policy};check(name,m,payload(m,{...base,...over}));}
 for(const [name,patch] of Object.entries({id:{i:'wrong'},extra:{evil:true},state:{state:{aaaa:1}},nonstr:{d:1},oversized:{d:' '.repeat(65537)},tampered:{d:payload(meta,{...base,ce:1}).d}}))check(name,meta,{...payload(meta,base),...patch});
 const encoding=['plain','é中😀','\u2028\u2029',JSON.stringify({n:1e-7,b:1e21})].map(value=>({value,seed:12345678,hash:boundValues({...meta.binding,pv:[0,0,0,0],sl:[0,0,0,0]},value)}));
-console.log(JSON.stringify({detect,verify,encoding},null,2));
+const {analyzeBehavior,validateTrace}=await load('core/src/behavior.js');
+const {AGENT_ARTIFACTS,agentFromCodes,agentFromTrace,agentFromHeaders,summarizeAgent}=await load('core/src/agents.js');
+const bsrc=readFileSync(resolve(root,'core/test/behavior.test.js'),'utf8');
+const bdefs=bsrc.slice(bsrc.indexOf('const ENV'),bsrc.indexOf('describe('));
+const {base:traceBase,humanMoves,pointerAct}=await import('data:text/javascript;base64,'+Buffer.from(bdefs+'\nexport {base,humanMoves,pointerAct};').toString('base64'));
+const behavior=[];
+const badd=(name,t,ctx={})=>{t=clean(t);behavior.push({name,input:t,ctx,invalid:validateTrace(t),result:analyzeBehavior(t,ctx)});};
+badd('missing',null);badd('empty',{});badd('no interaction',traceBase());
+const human=traceBase({m:humanMoves(512.4,331.7,4000),a:pointerAct()});
+badd('human',human);badd('replay',human,{replayed:true});
+for(const [name,patch] of Object.entries({untrusted:{tr:0},hidden:{hid:1},center:{cx:0,cy:0},leak:{sox:0,soy:0},instant:{u:4001},unseen:{t:50,u:55},key:{k:1,u:4001},click:{k:2},touch:{pt:2,cw:1,ch:1,pr:0.5}}))badd(name,{...human,a:{...human.a,...patch}});
+for(const [name,patch] of Object.entries({warp:{m:[]},idle:{m:[],last:1},scroll:{us:3990},neverVisible:{vis:-1},slowClock:{res:20},n:{n:[1,2,0,0,0,0,0,1,3,4,2]}}))badd(name,{...human,...patch});
+for(const step of [10,50,100,137])for(const dwell of [0,25,50])badd('typing '+step+' '+dwell,traceBase({k:Array.from({length:12},(_,i)=>[i*step,dwell])}));
+for(const d of [0,0.003]){
+ const m=Array.from({length:20},(_,i)=>[3500+i*20,100+i*12+(d?d*i*i*i:0),200+i*5+(d?d*i*i*i:0),1,0]);
+ badd('path '+d,traceBase({m,a:pointerAct({x:m.at(-1)[1],y:m.at(-1)[2]})}));
+}
+for(const key of Object.keys(traceBase())){const t=traceBase();delete t[key];badd('missing '+key,t);}
+for(const [name,patch] of Object.entries({res:{res:-1},env:{env:[0]},counters:{n:[-1,0,0,0,0,0,0,0,0,0]},moves:{m:Array(321).fill([1,2,3,1,0])},move:{m:[[1,2,3,1]]},order:{m:[[2000,1,1,1,0],[0,1,1,1,0]]},keys:{k:Array(65).fill([1,1])},key:{k:[[1,70000]]},activation:{a:{k:3}}}))badd('malformed '+name,{...traceBase(),...patch});
+badd('strict',traceBase({m:[],a:pointerAct({cx:0,cy:0,u:4001}),last:1}),{strict:true,threshold:0.4});
+const agents=[];
+for(const code of Object.keys(AGENT_ARTIFACTS).concat(['unknown','automation'])){
+ const input=[code];const found=agentFromCodes(input);agents.push({name:'code '+code,kind:'codes',input,found,result:summarizeAgent(found)});
+}
+for(const v of behavior.filter(v=>v.input&&v.invalid===null)){
+ const found=agentFromTrace(v.input);agents.push({name:'trace '+v.name,kind:'trace',input:v.input,found,result:summarizeAgent(found)});
+}
+for(const ua of ['Claude-Agent/1','Google-Agent','Manus-User/1','ChatGPT-User/1','GrokAgent','Agent-NovaAct/1','TwinAgent/1','CloudflareBrowserRenderingCrawler/1','Claude-User','claude-code/1','Perplexity-User/1','MistralAI-User/1','meta-externalfetcher/1','HarkBot/1','Mozilla/5.0 (Macintosh) Claude/1.2.3 Chrome/130','Mozilla/5.0 Windows NT Chrome/151']){
+ const input={'User-Agent':ua,'Sec-CH-UA-Platform':'"Linux"'};const found=agentFromHeaders(input);agents.push({name:'header '+ua,kind:'headers',input,found,result:summarizeAgent(found)});
+}
+for(const host of ['chatgpt.com','agent.bot.goog','api.manus.im','cursorusercontent.com','www.kernel.sh','foo.example.com','abc.keydirectory.signer.xyz.on.aws']){
+ const input={'Signature-Agent':'sig="https://'+host+'"'};const found=agentFromHeaders(input);agents.push({name:'signature '+host,kind:'headers',input,found,result:summarizeAgent(found)});
+}
+const all={detect,verify,encoding,behavior,agents};
+console.log('{\n'+Object.entries(all).map(([k,v])=>JSON.stringify(k)+': [\n'+v.map(x=>JSON.stringify(x)).join(',\n')+'\n]').join(',\n')+'\n}');

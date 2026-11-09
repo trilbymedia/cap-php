@@ -31,3 +31,5 @@ const mod = await import('data:text/javascript;base64,' + Buffer.from(src).toStr
 const output = new URL('../src/Instrumentation/', import.meta.url);
 writeFileSync(new URL('client.js', output), '// Derived from capjs-core 0.1.11; Apache-2.0; see UPSTREAM.md.\n' + mod.template() + '\n');
 writeFileSync(new URL('collector-config.json', output), JSON.stringify(mod.config) + '\n');
+const { AGENT_ARTIFACTS } = await import(pathToFileURL(resolve(dirname(input), 'agents.js')).href);
+writeFileSync(new URL('agent-artifacts.json', output), JSON.stringify(AGENT_ARTIFACTS) + '\n');
