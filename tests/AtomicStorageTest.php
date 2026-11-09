@@ -7,41 +7,57 @@ namespace TrilbyMedia\Cap\Tests;
 use PHPUnit\Framework\TestCase;
 use Psr\SimpleCache\CacheInterface;
 use TrilbyMedia\Cap\{Cap, Config, Prng};
-use TrilbyMedia\Cap\Storage\{ArrayStorage, FilesystemStorage, Psr16Storage};
+use TrilbyMedia\Cap\Storage\{ArrayStorage, DirectoryStorage, FilesystemStorage, Psr16Storage};
 
 final class AtomicStorageTest extends TestCase
 {
-    public function testConcurrentRedeemAndValidationHaveExactlyOneWinner(): void
+    public static function atomicFileStorages(): array
+    {
+        return [[FilesystemStorage::class], [DirectoryStorage::class]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('atomicFileStorages')]
+    public function testConcurrentRedeemAndValidationHaveExactlyOneWinner(string $class): void
     {
         $dir = sys_get_temp_dir() . '/cap-concurrency-' . bin2hex(random_bytes(8));
         mkdir($dir);
         try {
-            $s = new FilesystemStorage($dir);
+            $s = new $class($dir);
             $cap = new Cap(new Config($s, $s, challengeCount: 1, challengeDifficulty: 1));
             $c = $cap->createChallenge();
             $salt = Prng::generate($c['token'] . '1', 32);
             $target = Prng::generate($c['token'] . '1d', 1);
             for ($n = 0; !str_starts_with(hash('sha256', $salt . $n), $target); $n++) {}
-            $results = $this->children($dir, $c['token'], $n, false);
+            $results = $this->children($class, $dir, $c['token'], $n, false);
             $winners = array_values(array_filter($results, static fn ($r) => $r['success']));
             $this->assertCount(1, $winners);
             for ($i = 0; $i < 8; $i++) {
                 $this->assertSame(['n' => $i, 'expires' => PHP_INT_MAX], $s->readChallenge('rate-' . $i));
             }
-            $validated = $this->children($dir, $winners[0]['token'], 0, true);
+            $validated = $this->children($class, $dir, $winners[0]['token'], 0, true);
             $this->assertCount(1, array_filter($validated, static fn ($r) => $r['success']));
         } finally {
-            foreach (glob($dir . '/*') as $file) unlink($file);
-            rmdir($dir);
+            self::removeTree($dir);
         }
     }
 
-    private function children(string $dir, string $token, int $nonce, bool $validate): array
+    public static function removeTree(string $dir): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+        foreach (new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($dir, \FilesystemIterator::SKIP_DOTS), \RecursiveIteratorIterator::CHILD_FIRST) as $f) {
+            $f->isDir() ? rmdir($f->getPathname()) : unlink($f->getPathname());
+        }
+        rmdir($dir);
+    }
+
+    private function children(string $class, string $dir, string $token, int $nonce, bool $validate): array
     {
         $autoload = dirname(__DIR__) . '/vendor/autoload.php';
         $script = <<<'CODE'
 require $argv[1];
-$s = new TrilbyMedia\Cap\Storage\FilesystemStorage($argv[2]);
+$s = new $argv[8]($argv[2]);
 $c = new TrilbyMedia\Cap\Cap(new TrilbyMedia\Cap\Config($s, $s, disableAutoCleanup: true));
 while (true) { clearstatcache(true, $argv[3]); if (is_file($argv[3])) break; usleep(1000); }
 if ($argv[7] === '1') {
@@ -55,7 +71,7 @@ CODE;
         $barrier = $dir . '/start-' . ($validate ? 'validate' : 'redeem');
         $children = [];
         for ($i = 0; $i < 8; $i++) {
-            $process = proc_open([PHP_BINARY, '-r', $script, $autoload, $dir, $barrier, $token, (string)$nonce, (string)$i, $validate ? '1' : '0'], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
+            $process = proc_open([PHP_BINARY, '-r', $script, $autoload, $dir, $barrier, $token, (string)$nonce, (string)$i, $validate ? '1' : '0', $class], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes);
             $this->assertIsResource($process);
             fclose($pipes[0]);
             $children[] = [$process, $pipes];
@@ -88,7 +104,7 @@ CODE;
         $cache->method('get')->willReturnCallback(static function ($key, $default = null) use (&$values) { return $values[$key] ?? $default; });
         $cache->method('delete')->willReturnCallback(static function ($key) use (&$values): bool { unset($values[$key]); return true; });
         try {
-            foreach ([new ArrayStorage(), new FilesystemStorage($dir), new Psr16Storage($cache)] as $s) {
+            foreach ([new ArrayStorage(), new FilesystemStorage($dir), new DirectoryStorage($dir . '/dir'), new Psr16Storage($cache)] as $s) {
                 $record = ['n' => 5, 'scope' => ['a', 'b'], 'expires' => PHP_INT_MAX];
                 $s->storeChallenge('grav-rate:example', $record);
                 $this->assertSame($record, $s->readChallenge('grav-rate:example'));
@@ -108,8 +124,7 @@ CODE;
                 $this->assertFalse($cap->validateToken($r['token']));
             }
         } finally {
-            foreach (glob($dir . '/*') as $file) unlink($file);
-            rmdir($dir);
+            self::removeTree($dir);
         }
     }
 
